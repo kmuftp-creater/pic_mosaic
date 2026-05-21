@@ -192,40 +192,42 @@
                         </div>
                     </div>
 
-                    <!-- 畫布區 / 拖曳上傳區 -->
-                    <div ref="workspaceRef" 
-                         class="flex-1 workspace-bg overflow-auto relative touch-none"
-                         @pointerdown="handlePointerDown"
-                         @pointermove="handlePointerMove"
-                         @pointerup="handlePointerUp"
-                         @pointercancel="handlePointerCancel"
-                         @pointerleave="handlePointerCancel"
-                         :class="mode === 'pan' ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''">
-                        
-                        <div class="min-w-full min-h-full w-max h-max flex p-4" style="align-items: safe center; justify-content: safe center;">
-                            <!-- 畫布 -->
-                            <canvas 
-                                v-show="hasImage"
-                                ref="canvasRef" 
-                                class="bg-white dark:bg-slate-900 shadow-md touch-none select-none"
-                                :class="mode === 'edit' ? 'cursor-crosshair' : 'pointer-events-none'"
-                                :style="canvasDisplayStyle">
-                            </canvas>
+                    <!-- 畫布區 / 拖曳上傳區 (新增外層隔絕排版撐開問題) -->
+                    <div class="flex-1 relative min-h-0">
+                        <div ref="workspaceRef" 
+                             class="absolute inset-0 workspace-bg overflow-auto touch-none"
+                             @pointerdown="handlePointerDown"
+                             @pointermove="handlePointerMove"
+                             @pointerup="handlePointerUp"
+                             @pointercancel="handlePointerCancel"
+                             @pointerleave="handlePointerCancel"
+                             :class="mode === 'pan' ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''">
+                            
+                            <div class="min-w-full min-h-full w-max h-max flex p-4" style="align-items: safe center; justify-content: safe center;">
+                                <!-- 畫布 -->
+                                <canvas 
+                                    v-show="hasImage"
+                                    ref="canvasRef" 
+                                    class="bg-white dark:bg-slate-900 shadow-md touch-none select-none"
+                                    :class="mode === 'edit' ? 'cursor-crosshair' : 'pointer-events-none'"
+                                    :style="canvasDisplayStyle">
+                                </canvas>
 
-                            <!-- 空白狀態 (拖曳上傳) -->
-                            <label v-if="!hasImage" 
-                                   class="absolute inset-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer group"
-                                   :class="isDragging ? 'bg-primary/10 border-primary scale-[0.98]' : 'border-slate-300 dark:border-slate-600 bg-card-light/50 dark:bg-card-dark/50 hover:bg-primary/5 dark:hover:bg-primary/5 hover:border-primary/50'"
-                                   @dragover.prevent="isDragging = true"
-                                   @dragleave.prevent="isDragging = false"
-                                   @drop.prevent="handleDrop">
-                                <div class="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center text-2xl mb-4 transition-transform group-hover:scale-110">
-                                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                                </div>
-                                <span class="text-lg font-bold mb-1 text-slate-800 dark:text-slate-200">點擊或拖曳上傳圖片</span>
-                                <span class="text-sm text-[#666666] dark:text-slate-400">支援 JPG, PNG, WEBP 格式</span>
-                                <input type="file" class="hidden" accept="image/*" @change="handleFileChange">
-                            </label>
+                                <!-- 空白狀態 (拖曳上傳) -->
+                                <label v-if="!hasImage" 
+                                       class="absolute inset-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer group"
+                                       :class="isDragging ? 'bg-primary/10 border-primary scale-[0.98]' : 'border-slate-300 dark:border-slate-600 bg-card-light/50 dark:bg-card-dark/50 hover:bg-primary/5 dark:hover:bg-primary/5 hover:border-primary/50'"
+                                       @dragover.prevent="isDragging = true"
+                                       @dragleave.prevent="isDragging = false"
+                                       @drop.prevent="handleDrop">
+                                    <div class="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center text-2xl mb-4 transition-transform group-hover:scale-110">
+                                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                                    </div>
+                                    <span class="text-lg font-bold mb-1 text-slate-800 dark:text-slate-200">點擊或拖曳上傳圖片</span>
+                                    <span class="text-sm text-[#666666] dark:text-slate-400">支援 JPG, PNG, WEBP 格式</span>
+                                    <input type="file" class="hidden" accept="image/*" @change="handleFileChange">
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
