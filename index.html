@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>圖片小碼哥 | 霍家私塾</title>
+    <meta name="description" content="直接在瀏覽器中上傳圖片，拖曳選取要遮蔽的區域，並套用馬賽克、模糊或色塊效果。">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans TC', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            DEFAULT: '#4A90E2',
+                            hover: '#357ABD',
+                        },
+                        status: {
+                            success: '#5AC8A5',
+                            error: '#F06292',
+                            warning: '#FFB74D',
+                            info: '#4FC3F7',
+                        },
+                        app: {
+                            light: '#F5F7FA',
+                            dark: '#020617', 
+                        },
+                        card: {
+                            light: '#FFFFFF',
+                            dark: '#0f172a', 
+                        }
+                    },
+                    boxShadow: {
+                        'soft-light': '0 20px 25px -5px rgba(74, 144, 226, 0.05), 0 8px 10px -6px rgba(74, 144, 226, 0.01)',
+                        'soft-dark': '0 25px 50px -12px rgba(0, 0, 0, 0.4)',
+                    },
+                    animation: {
+                        'fade-in-up': 'fadeInUp 0.4s ease-out forwards',
+                    },
+                    keyframes: {
+                        fadeInUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        [v-cloak] { display: none; }
+        
+        /* 隱藏原生 input file 按鈕 */
+        input[type="file"]::file-selector-button { display: none; }
+        
+        /* 畫布工作區背景 (透明棋盤格) */
+        .workspace-bg {
+            background-image: 
+                linear-gradient(45deg, rgba(128,128,128,0.1) 25%, transparent 25%), 
+                linear-gradient(-45deg, rgba(128,128,128,0.1) 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.1) 75%), 
+                linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.1) 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+
+        /* 滾動條美化 */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .dark ::-webkit-scrollbar-thumb { background: #475569; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-app-light dark:bg-app-dark text-[#333333] dark:text-slate-200 transition-colors duration-300 min-h-screen flex flex-col">
+
+<div id="app" v-cloak class="flex-1 flex flex-col relative">
+
+    <div class="fixed top-20 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col gap-2">
+        <transition-group name="list" tag="div">
+            <div v-for="t in toasts" :key="t.id" 
+                 class="px-5 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-fade-in-up"
+                 :class="{
+                     'bg-status-success text-white': t.type === 'success',
+                     'bg-status-error text-white': t.type === 'error',
+                     'bg-status-info text-white': t.type === 'info'
+                 }">
+                 <i class="fa-solid" :class="{
+                     'fa-circle-check': t.type === 'success',
+                     'fa-circle-exclamation': t.type === 'error',
+                     'fa-circle-info': t.type === 'info'
+                 }"></i>
+                 <span class="font-medium">{{ t.message }}</span>
+            </div>
+        </transition-group>
+    </div>
+
+    <header class="sticky top-0 z-40 bg-app-light/80 dark:bg-app-dark/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 transition-colors duration-300">
+        <div class="max-w-7xl mx-auto w-full px-4 h-16 flex items-center justify-between">
+            <!-- Logo & Title -->
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-primary text-white rounded-xl flex items-center justify-center text-lg shadow-md">
+                    <i class="fa-solid fa-border-all"></i>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight text-primary">圖片小碼哥</h1>
+            </div>
+            
+            <!-- Right Controls -->
+            <div class="flex items-center gap-3">
+                <!-- 說明按鈕 -->
+                <button @click="showHelp = true" class="flex items-center gap-2 px-4 py-2 rounded-full font-medium transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300">
+                    <i class="fa-solid fa-book-open"></i>
+                    <span class="hidden sm:inline">說明</span>
+                </button>
+                
+                <!-- 亮暗色切換按鈕 -->
+                <button @click="toggleTheme" class="w-9 h-9 flex items-center justify-center rounded-lg transition-colors bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700">
+                    <i v-if="isDark" class="fa-solid fa-sun text-yellow-400 text-lg"></i>
+                    <i v-else class="fa-solid fa-moon text-yellow-500 text-lg"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-8 flex flex-col">
+        
+        <div class="bg-card-light dark:bg-card-dark rounded-2xl shadow-soft-light dark:shadow-soft-dark border border-slate-200 dark:border-slate-800 p-6 md:p-10 flex-1 flex flex-col transition-colors duration-300 relative overflow-hidden">
+            
+            <!-- Loading Indicator (模擬處理中) -->
+            <div v-if="isProcessing" class="absolute top-0 left-0 h-1 w-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <div class="h-full bg-primary w-1/3 animate-pulse rounded-r-full shadow-[0_0_10px_#4A90E2]"></div>
+            </div>
+
+            <!-- 卡片內部分兩欄佈局 -->
+            <div class="flex flex-col lg:flex-row gap-8 flex-1 h-full">
+                
+                <!-- 左側：畫布與預覽區 -->
+                <div class="flex-1 flex flex-col min-h-[400px] lg:min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-app-light dark:bg-app-dark relative">
+                    
+                    <!-- 畫布頂部工具列 -->
+                    <div class="h-14 border-b border-slate-200 dark:border-slate-700 bg-card-light dark:bg-card-dark flex items-center justify-between px-4 shrink-0">
+                        <div class="flex items-center gap-3">
+                            <!-- 操作模式切換 -->
+                            <div class="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg">
+                                <button @click="mode = 'edit'" :class="mode === 'edit' ? 'bg-white shadow dark:bg-slate-600 text-primary' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'" class="w-7 h-7 rounded flex items-center justify-center transition-all" title="編輯模式">
+                                    <i class="fa-solid fa-pen-nib text-sm"></i>
+                                </button>
+                                <button @click="mode = 'pan'" :class="mode === 'pan' ? 'bg-white shadow dark:bg-slate-600 text-primary' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'" class="w-7 h-7 rounded flex items-center justify-center transition-all" title="拖拉模式">
+                                    <i class="fa-solid fa-hand text-sm"></i>
+                                </button>
+                            </div>
+
+                            <div class="w-px h-5 bg-slate-300 dark:bg-slate-600 hidden sm:block"></div>
+
+                            <!-- 編輯動作按鈕 -->
+                            <div class="flex items-center gap-1">
+                                <button @click="undo" :disabled="!canUndo" class="w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" title="復原 (Undo)">
+                                    <i class="fa-solid fa-rotate-left"></i>
+                                </button>
+                                <button @click="resetImage" :disabled="!hasImage" class="w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800" title="重設原圖">
+                                    <i class="fa-solid fa-clock-rotate-left"></i>
+                                </button>
+                                <button @click="clearImage" :disabled="!hasImage" class="w-9 h-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-status-error hover:bg-red-50 dark:hover:bg-red-900/20" title="清除圖檔">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- 縮放按鈕 -->
+                        <div class="flex items-center gap-1 text-slate-600 dark:text-slate-400">
+                            <button @click="adjustZoom(-25)" :disabled="!hasImage || zoomPercent <= minZoom" class="w-8 h-8 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"><i class="fa-solid fa-minus"></i></button>
+                            <span class="text-sm font-medium w-12 text-center">{{ zoomPercent }}%</span>
+                            <button @click="adjustZoom(25)" :disabled="!hasImage || zoomPercent >= maxZoom" class="w-8 h-8 rounded hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50"><i class="fa-solid fa-plus"></i></button>
+                            <div class="w-px h-4 bg-slate-300 dark:bg-slate-600 mx-1"></div>
+                            <button @click="resetZoom" :disabled="!hasImage" class="w-8 h-8 rounded text-primary hover:bg-primary/10 disabled:opacity-50" title="適應視窗"><i class="fa-solid fa-expand"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- 畫布區 / 拖曳上傳區 -->
+                    <div ref="workspaceRef" 
+                         class="flex-1 workspace-bg overflow-auto relative touch-none"
+                         @pointerdown="handlePointerDown"
+                         @pointermove="handlePointerMove"
+                         @pointerup="handlePointerUp"
+                         @pointercancel="handlePointerCancel"
+                         @pointerleave="handlePointerCancel"
+                         :class="mode === 'pan' ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''">
+                        
+                        <div class="min-w-full min-h-full w-max h-max flex p-4" style="align-items: safe center; justify-content: safe center;">
+                            <!-- 畫布 -->
+                            <canvas 
+                                v-show="hasImage"
+                                ref="canvasRef" 
+                                class="bg-white dark:bg-slate-900 shadow-md touch-none select-none"
+                                :class="mode === 'edit' ? 'cursor-crosshair' : 'pointer-events-none'"
+                                :style="canvasDisplayStyle">
+                            </canvas>
+
+                            <!-- 空白狀態 (拖曳上傳) -->
+                            <label v-if="!hasImage" 
+                                   class="absolute inset-4 border-2 border-dashed rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer group"
+                                   :class="isDragging ? 'bg-primary/10 border-primary scale-[0.98]' : 'border-slate-300 dark:border-slate-600 bg-card-light/50 dark:bg-card-dark/50 hover:bg-primary/5 dark:hover:bg-primary/5 hover:border-primary/50'"
+                                   @dragover.prevent="isDragging = true"
+                                   @dragleave.prevent="isDragging = false"
+                                   @drop.prevent="handleDrop">
+                                <div class="w-16 h-16 bg-primary/10 text-primary rounded-full flex items-center justify-center text-2xl mb-4 transition-transform group-hover:scale-110">
+                                    <i class="fa-solid fa-cloud-arrow-up"></i>
+                                </div>
+                                <span class="text-lg font-bold mb-1 text-slate-800 dark:text-slate-200">點擊或拖曳上傳圖片</span>
+                                <span class="text-sm text-[#666666] dark:text-slate-400">支援 JPG, PNG, WEBP 格式</span>
+                                <input type="file" class="hidden" accept="image/*" @change="handleFileChange">
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <aside class="w-full lg:w-80 flex flex-col gap-6 shrink-0">
+                    
+                    <!-- 編輯工具面板 -->
+                    <div class="flex flex-col gap-6" :class="{'opacity-60 pointer-events-none': !hasImage}">
+                        
+                        <!-- 視窗防護設定 -->
+                        <label class="flex items-center gap-3 cursor-pointer group">
+                            <div class="relative flex items-center justify-center w-5 h-5">
+                                <input type="checkbox" v-model="preventAutoResize" class="peer appearance-none w-5 h-5 border-2 border-slate-300 dark:border-slate-600 rounded bg-app-light dark:bg-slate-950 checked:bg-primary checked:border-primary transition-colors cursor-pointer focus:ring-2 focus:ring-primary/30 outline-none">
+                                <i class="fa-solid fa-check absolute text-white text-xs opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"></i>
+                            </div>
+                            <span class="text-sm text-[#333333] dark:text-slate-300 select-none group-hover:text-primary transition-colors">防止因拖拉視窗導致重新整理</span>
+                        </label>
+
+                        <!-- 效果類型 -->
+                        <div>
+                            <label class="block text-sm font-bold mb-3 text-slate-800 dark:text-slate-200">遮蔽類型</label>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button v-for="effect in effects" :key="effect.value" @click="effectType = effect.value" 
+                                    class="py-3 px-2 text-sm font-medium rounded-lg flex flex-col items-center gap-2 transition-all border"
+                                    :class="effectType === effect.value ? 'bg-primary/10 border-primary text-primary' : 'bg-app-light dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-[#666666] dark:text-slate-400 hover:border-primary/50'">
+                                    <i :class="effect.icon" class="text-lg"></i>
+                                    <span>{{ effect.label }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 參數滑桿 (動態顯示) -->
+                        <div class="bg-app-light dark:bg-slate-950 rounded-xl p-5 border border-slate-200 dark:border-slate-800">
+                            <!-- 馬賽克 -->
+                            <div v-if="effectType === 'mosaic'">
+                                <div class="flex justify-between mb-3">
+                                    <label class="text-sm font-bold text-slate-800 dark:text-slate-200">大小</label>
+                                    <span class="text-sm text-primary font-bold">{{ blockSize }}px</span>
+                                </div>
+                                <input type="range" min="4" max="100" step="2" v-model.number="blockSize" class="w-full accent-primary h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                            </div>
+
+                            <!-- 模糊 -->
+                            <div v-if="effectType === 'blur'">
+                                <div class="flex justify-between mb-3">
+                                    <label class="text-sm font-bold text-slate-800 dark:text-slate-200">大小</label>
+                                    <span class="text-sm text-primary font-bold">{{ blurSize }}px</span>
+                                </div>
+                                <input type="range" min="2" max="50" step="1" v-model.number="blurSize" class="w-full accent-primary h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                            </div>
+
+                            <!-- 色塊 -->
+                            <div v-if="effectType === 'solid'">
+                                <label class="block text-sm font-bold mb-3 text-slate-800 dark:text-slate-200">覆蓋顏色</label>
+                                <div class="flex items-center gap-4">
+                                    <div class="relative w-12 h-12 rounded-lg overflow-hidden border-2 border-slate-200 dark:border-slate-700 shadow-sm focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30">
+                                        <input type="color" v-model="solidColor" class="absolute -top-2 -left-2 w-16 h-16 cursor-pointer">
+                                    </div>
+                                    <div class="flex gap-2 flex-wrap flex-1">
+                                        <button v-for="color in colorPresets" :key="color" @click="solidColor = color" 
+                                            class="w-8 h-8 rounded-full border border-slate-300 dark:border-slate-600 focus:outline-none transition-transform hover:scale-110" 
+                                            :style="{ backgroundColor: color }" 
+                                            :class="{'ring-2 ring-offset-2 ring-offset-card-light dark:ring-offset-card-dark ring-primary': solidColor.toLowerCase() === color.toLowerCase()}">
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 範圍形狀 -->
+                        <div>
+                            <label class="block text-sm font-bold mb-3 text-slate-800 dark:text-slate-200">選取形狀</label>
+                            <div class="flex gap-3">
+                                <button v-for="item in shapes" :key="item.value" @click="shapeType = item.value" 
+                                    class="flex-1 py-2.5 px-4 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-all border"
+                                    :class="shapeType === item.value ? 'bg-primary border-primary text-white shadow-md' : 'bg-app-light dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-[#666666] dark:text-slate-400 hover:border-primary/50'">
+                                    <i :class="item.icon"></i>
+                                    <span>{{ item.label }}</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 匯出區域 -->
+                        <div class="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col gap-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-bold mb-2 text-slate-800 dark:text-slate-200">格式</label>
+                                    <select v-model="outputFormat" class="w-full bg-app-light dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-[#333333] dark:text-slate-200 rounded-lg px-4 py-2.5 focus:ring-1 focus:ring-primary outline-none transition-colors appearance-none">
+                                        <option value="image/jpeg">JPG</option>
+                                        <option value="image/png">PNG</option>
+                                        <option value="image/webp">WEBP</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-bold mb-2 text-slate-800 dark:text-slate-200">品質</label>
+                                    <select v-model.number="outputQuality" :disabled="outputFormat === 'image/png'" class="w-full bg-app-light dark:bg-slate-950 border border-slate-200 dark:border-slate-700 text-[#333333] dark:text-slate-200 rounded-lg px-4 py-2.5 focus:ring-1 focus:ring-primary outline-none transition-colors appearance-none disabled:opacity-50">
+                                        <option value="0.9">高 (90%)</option>
+                                        <option value="0.8">中 (80%)</option>
+                                        <option value="0.6">一般 (60%)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <button @click="downloadImage" class="w-full bg-primary hover:bg-primary-hover text-white font-bold py-3.5 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-download"></i> 儲存圖片
+                            </button>
+                        </div>
+                    </div>
+
+                </aside>
+            </div>
+        </div>
+    </main>
+
+    <footer class="mt-8 py-6 border-t border-slate-200 dark:border-slate-800 bg-app-light dark:bg-app-dark text-center">
+        <p class="text-sm text-[#666666] dark:text-slate-400">
+            <span class="font-mono bg-slate-200 dark:bg-slate-800 px-2 py-0.5 rounded text-xs mr-2">v0.1.2</span>
+            ©2026 <a href="https://huobest.com/" target="_blank" class="text-primary hover:underline font-medium">霍家私塾</a>
+        </p>
+    </footer>
+
+    <transition name="fade">
+        <div v-if="showHelp" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showHelp = false">
+            <div class="bg-card-light dark:bg-slate-900 w-full max-w-2xl max-h-[85vh] rounded-xl shadow-2xl overflow-hidden flex flex-col animate-fade-in-up">
+                
+                <div class="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-app-light dark:bg-slate-950">
+                    <h3 class="text-lg font-bold text-slate-800 dark:text-slate-100"><i class="fa-solid fa-book-open text-primary mr-2"></i>新手操作指南</h3>
+                    <button @click="showHelp = false" class="text-slate-400 hover:text-status-error transition-colors w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
+                </div>
+                
+                <div class="p-6 overflow-y-auto text-base text-[#333333] dark:text-slate-300 space-y-5 leading-relaxed">
+                    <section>
+                        <h4 class="font-bold text-primary mb-2 text-lg">1. 載入圖片</h4>
+                        <p>點擊畫面左側的虛線方框，或直接將圖片拖曳進入方框內。所有圖片處理皆在您的瀏覽器前端完成，<strong>絕不會上傳至任何伺服器</strong>，保護您的隱私。</p>
+                    </section>
+                    <section>
+                        <h4 class="font-bold text-primary mb-2 text-lg">2. 選擇遮蔽效果</h4>
+                        <ul class="list-disc pl-5 space-y-2">
+                            <li><strong>馬賽克</strong>：經典的方塊模糊效果，可調整方塊大小。</li>
+                            <li><strong>模糊</strong>：平滑的毛玻璃效果，適合遮蔽人臉。</li>
+                            <li><strong>色塊</strong>：使用單一顏色完全覆蓋，適合遮蔽身分證字號或車牌。</li>
+                        </ul>
+                    </section>
+                    <section>
+                        <h4 class="font-bold text-primary mb-2 text-lg">3. 在圖片上拖曳</h4>
+                        <p>設定好參數後，確認上方工具列處於 <i class="fa-solid fa-pen-nib mx-1"></i> 編輯模式，直接在圖片上按住並拖曳出範圍，放開後即自動套用效果。若不滿意，可點擊畫布上方的 <i class="fa-solid fa-rotate-left"></i> 復原按鈕。</p>
+                    </section>
+                    <section>
+                        <h4 class="font-bold text-primary mb-2 text-lg">4. 畫布拖拉與視窗防護</h4>
+                        <p>當圖片放大時，可切換至 <i class="fa-solid fa-hand mx-1"></i> 拖拉模式來移動畫布。若擔心不小心縮放視窗導致畫布被清空，請勾選「防止因拖拉視窗導致重新整理」保護您的工作進度。</p>
+                    </section>
+                </div>
+                
+                <div class="px-6 py-4 border-t border-slate-200 dark:border-slate-800 bg-app-light dark:bg-slate-950 flex justify-end">
+                    <button @click="showHelp = false" class="bg-primary hover:bg-primary-hover text-white px-6 py-2.5 rounded-lg font-bold shadow-md transition-colors">
+                        我了解了
+                    </button>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+    <!-- 清除確認 Modal -->
+    <transition name="fade">
+        <div v-if="showClearConfirm" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" @click.self="showClearConfirm = false">
+            <div class="bg-card-light dark:bg-slate-900 w-full max-w-sm rounded-xl shadow-2xl p-6 flex flex-col animate-fade-in-up border border-slate-200 dark:border-slate-800">
+                <h3 class="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">確認清除圖片？</h3>
+                <p class="text-slate-600 dark:text-slate-400 mb-6 text-sm">這將會清空畫布上的所有內容，且無法復原。</p>
+                <div class="flex justify-end gap-3">
+                    <button @click="showClearConfirm = false" class="px-4 py-2 rounded-lg font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">取消</button>
+                    <button @click="confirmClearImage" class="px-4 py-2 rounded-lg font-medium bg-status-error hover:bg-red-500 text-white shadow-md transition-colors">確定清除</button>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+</div>
+
+<script>
+    const { createApp, ref, reactive, computed, onMounted, onBeforeUnmount, watch } = Vue;
+
+    createApp({
+        setup() {
+            // Refs (DOM)
+            const workspaceRef = ref(null);
+            const canvasRef = ref(null);
+            
+            // UI State
+            const isDark = ref(true);
+            const showHelp = ref(false);
+            const showClearConfirm = ref(false);
+            const isProcessing = ref(false);
+            const isDragging = ref(false);
+            const mode = ref('edit'); // 'edit' or 'pan'
+            const isPanning = ref(false);
+            
+            // App State
+            const hasImage = ref(false);
+            const canUndo = ref(false);
+            const preventAutoResize = ref(false);
+            
+            // Toasts
+            const toasts = ref([]);
+            let toastId = 0;
+            
+            // Tools Settings
+            const effectType = ref('blur'); 
+            const shapeType = ref('ellipse'); 
+            const blockSize = ref(20);
+            const blurSize = ref(20);
+            const solidColor = ref('#222222');
+            const outputFormat = ref('image/jpeg');
+            const outputQuality = ref(0.9);
+            
+            // Zoom Settings
+            const zoomPercent = ref(100);
+            const minZoom = 25;
+            const maxZoom = 300;
+            const imageSize = reactive({ width: 0, height: 0 });
+            const workspaceSize = reactive({ width: 0, height: 0 });
+            
+            // Selection state
+            const selection = reactive({
+                active: false,
+                startX: 0, startY: 0,
+                currentX: 0, currentY: 0,
+            });
+
+            // Canvas Internals
+            const history = [];
+            const maxHistory = 30;
+            let context = null;
+            let originalImageData = null;
+            let activeSnapshot = null;
+            
+            // Pan Internals
+            let panStartX = 0;
+            let panStartY = 0;
+            let panStartScrollLeft = 0;
+            let panStartScrollTop = 0;
+
+            // UI Options Data
+            const effects = [
+                { value: 'mosaic', label: "馬賽克", icon: 'fa-solid fa-border-all' },
+                { value: 'blur', label: "模糊", icon: 'fa-solid fa-droplet' },
+                { value: 'solid', label: "色塊", icon: 'fa-solid fa-fill-drip' },
+            ];
+            const shapes = [
+                { value: 'ellipse', label: "橢圓", icon: 'fa-regular fa-circle' },
+                { value: 'rectangle', label: "矩形", icon: 'fa-regular fa-square' },
+            ];
+            const colorPresets = ['#FFFFFF', '#F5F7FA', '#666666', '#333333', '#000000', '#4A90E2', '#5AC8A5', '#F06292', '#FFB74D'];
+
+            // Computed
+            const fitScale = computed(() => {
+                if (!imageSize.width || !imageSize.height || !workspaceSize.width || !workspaceSize.height) return 1;
+                // 保留 padding 空間
+                const availableWidth = Math.max(200, workspaceSize.width - 32);
+                const availableHeight = Math.max(200, workspaceSize.height - 32);
+                return Math.min(availableWidth / imageSize.width, availableHeight / imageSize.height, 1);
+            });
+
+            const canvasDisplayStyle = computed(() => {
+                if (!hasImage.value || !imageSize.width) return {};
+                const scale = fitScale.value * (zoomPercent.value / 100);
+                return {
+                    width: `${Math.max(1, Math.round(imageSize.width * scale))}px`,
+                    height: `${Math.max(1, Math.round(imageSize.height * scale))}px`,
+                };
+            });
+
+            // Theme Logic
+            function toggleTheme() {
+                isDark.value = !isDark.value;
+                if (isDark.value) {
+                    document.documentElement.classList.add('dark');
+                    localStorage.setItem('theme', 'dark');
+                } else {
+                    document.documentElement.classList.remove('dark');
+                    localStorage.setItem('theme', 'light');
+                }
+            }
+
+            function initTheme() {
+                if (localStorage.theme === 'light') {
+                    isDark.value = false;
+                    document.documentElement.classList.remove('dark');
+                } else {
+                    isDark.value = true;
+                    document.documentElement.classList.add('dark');
+                }
+            }
+
+            // Toast Logic
+            function addToast(message, type = 'success') {
+                const id = toastId++;
+                toasts.value.push({ id, message, type });
+                setTimeout(() => {
+                    toasts.value = toasts.value.filter(t => t.id !== id);
+                }, 3000);
+            }
+
+            // Canvas & Tools Logic
+            function syncUndoState() {
+                canUndo.value = history.length > 0;
+            }
+
+            function saveHistory() {
+                if (!canvasRef.value || !context) return;
+                history.push(context.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height));
+                if (history.length > maxHistory) history.shift();
+                syncUndoState();
+            }
+
+            function clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
+
+            function updateWorkspaceSize() {
+                if (!workspaceRef.value) return;
+                // 如果開啟防護且已經有圖片，不重算畫布適應大小 (保持當前比例，使用者只能靠放大縮小按鈕)
+                if (preventAutoResize.value && hasImage.value) return;
+
+                workspaceSize.width = workspaceRef.value.clientWidth;
+                workspaceSize.height = workspaceRef.value.clientHeight;
+            }
+
+            function adjustZoom(delta) {
+                zoomPercent.value = clamp(zoomPercent.value + delta, minZoom, maxZoom);
+            }
+
+            function resetZoom() {
+                zoomPercent.value = 100;
+            }
+
+            function pointerToCanvas(event) {
+                const canvas = canvasRef.value;
+                const rect = canvas.getBoundingClientRect();
+                return {
+                    x: clamp((event.clientX - rect.left) * (canvas.width / rect.width), 0, canvas.width),
+                    y: clamp((event.clientY - rect.top) * (canvas.height / rect.height), 0, canvas.height),
+                };
+            }
+
+            function getSelectionBox() {
+                const x = Math.min(selection.startX, selection.currentX);
+                const y = Math.min(selection.startY, selection.currentY);
+                const width = Math.abs(selection.currentX - selection.startX);
+                const height = Math.abs(selection.currentY - selection.startY);
+                return { x: Math.round(x), y: Math.round(y), width: Math.round(width), height: Math.round(height) };
+            }
+
+            function isInsideShape(px, py, box) {
+                if (shapeType.value === 'rectangle') {
+                    return px >= box.x && px < box.x + box.width && py >= box.y && py < box.y + box.height;
+                }
+                const radiusX = box.width / 2;
+                const radiusY = box.height / 2;
+                if (radiusX <= 0 || radiusY <= 0) return false;
+                const centerX = box.x + radiusX;
+                const centerY = box.y + radiusY;
+                const dx = (px - centerX) / radiusX;
+                const dy = (py - centerY) / radiusY;
+                return dx * dx + dy * dy <= 1;
+            }
+
+            function drawSelectionPreview() {
+                const canvas = canvasRef.value;
+                if (!canvas || !context || !activeSnapshot) return;
+                
+                context.putImageData(activeSnapshot, 0, 0);
+                const box = getSelectionBox();
+                if (box.width < 2 || box.height < 2) return;
+
+                context.save();
+                context.strokeStyle = '#4A90E2';
+                context.lineWidth = Math.max(2, canvas.width / 500);
+                context.setLineDash([8, 6]);
+                context.fillStyle = 'rgba(74, 144, 226, 0.15)';
+
+                if (shapeType.value === 'ellipse') {
+                    context.beginPath();
+                    context.ellipse(box.x + box.width / 2, box.y + box.height / 2, box.width / 2, box.height / 2, 0, 0, Math.PI * 2);
+                    context.fill();
+                    context.stroke();
+                } else {
+                    context.fillRect(box.x, box.y, box.width, box.height);
+                    context.strokeRect(box.x, box.y, box.width, box.height);
+                }
+                context.restore();
+            }
+
+            // Effects implementation
+            function applyMosaic(box) {
+                const canvas = canvasRef.value;
+                const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                const data = imageData.data;
+                const size = Math.max(2, Number(blockSize.value) || 20);
+                const endX = Math.min(canvas.width, box.x + box.width);
+                const endY = Math.min(canvas.height, box.y + box.height);
+
+                for (let y = box.y; y < endY; y += size) {
+                    for (let x = box.x; x < endX; x += size) {
+                        let red = 0, green = 0, blue = 0, alpha = 0, count = 0;
+                        const blockEndX = Math.min(endX, x + size);
+                        const blockEndY = Math.min(endY, y + size);
+
+                        for (let py = y; py < blockEndY; py++) {
+                            for (let px = x; px < blockEndX; px++) {
+                                if (!isInsideShape(px + 0.5, py + 0.5, box)) continue;
+                                const idx = (py * canvas.width + px) * 4;
+                                red += data[idx]; green += data[idx + 1]; blue += data[idx + 2]; alpha += data[idx + 3];
+                                count++;
+                            }
+                        }
+
+                        if (!count) continue;
+                        red = Math.round(red / count); green = Math.round(green / count);
+                        blue = Math.round(blue / count); alpha = Math.round(alpha / count);
+
+                        for (let py = y; py < blockEndY; py++) {
+                            for (let px = x; px < blockEndX; px++) {
+                                if (!isInsideShape(px + 0.5, py + 0.5, box)) continue;
+                                const idx = (py * canvas.width + px) * 4;
+                                data[idx] = red; data[idx + 1] = green; data[idx + 2] = blue; data[idx + 3] = alpha;
+                            }
+                        }
+                    }
+                }
+                context.putImageData(imageData, 0, 0);
+            }
+
+            function applyBlur(box) {
+                const source = document.createElement('canvas');
+                source.width = box.width; source.height = box.height;
+                source.getContext('2d').drawImage(canvasRef.value, box.x, box.y, box.width, box.height, 0, 0, box.width, box.height);
+
+                const blurred = document.createElement('canvas');
+                blurred.width = box.width; blurred.height = box.height;
+                const bCtx = blurred.getContext('2d');
+                bCtx.filter = `blur(${Math.max(1, Number(blurSize.value) || 20)}px)`;
+                bCtx.drawImage(source, 0, 0);
+
+                context.save();
+                context.beginPath();
+                if (shapeType.value === 'ellipse') {
+                    context.ellipse(box.x + box.width / 2, box.y + box.height / 2, box.width / 2, box.height / 2, 0, 0, Math.PI * 2);
+                } else {
+                    context.rect(box.x, box.y, box.width, box.height);
+                }
+                context.clip();
+                context.drawImage(blurred, box.x, box.y);
+                context.restore();
+            }
+
+            function applySolid(box) {
+                context.save();
+                context.fillStyle = solidColor.value;
+                context.beginPath();
+                if (shapeType.value === 'ellipse') {
+                    context.ellipse(box.x + box.width / 2, box.y + box.height / 2, box.width / 2, box.height / 2, 0, 0, Math.PI * 2);
+                } else {
+                    context.rect(box.x, box.y, box.width, box.height);
+                }
+                context.fill();
+                context.restore();
+            }
+
+            function applyEffect(box) {
+                isProcessing.value = true;
+                // Use setTimeout to allow UI to show processing state if needed
+                setTimeout(() => {
+                    if (effectType.value === 'blur') applyBlur(box);
+                    else if (effectType.value === 'solid') applySolid(box);
+                    else applyMosaic(box);
+                    isProcessing.value = false;
+                }, 10);
+            }
+
+            // Pointer Events
+            function handlePointerDown(event) {
+                if (!hasImage.value) return;
+                
+                // 拖拉模式
+                if (mode.value === 'pan') {
+                    event.preventDefault();
+                    isPanning.value = true;
+                    panStartX = event.clientX;
+                    panStartY = event.clientY;
+                    panStartScrollLeft = workspaceRef.value.scrollLeft;
+                    panStartScrollTop = workspaceRef.value.scrollTop;
+                    workspaceRef.value.setPointerCapture(event.pointerId);
+                }
+                // 編輯模式
+                else if (mode.value === 'edit') {
+                    if (event.target !== canvasRef.value) return;
+                    event.preventDefault();
+                    const point = pointerToCanvas(event);
+                    selection.active = true;
+                    selection.startX = point.x; selection.startY = point.y;
+                    selection.currentX = point.x; selection.currentY = point.y;
+                    activeSnapshot = context.getImageData(0, 0, canvasRef.value.width, canvasRef.value.height);
+                    workspaceRef.value.setPointerCapture(event.pointerId);
+                }
+            }
+
+            function handlePointerMove(event) {
+                if (mode.value === 'pan' && isPanning.value) {
+                    event.preventDefault();
+                    const dx = event.clientX - panStartX;
+                    const dy = event.clientY - panStartY;
+                    workspaceRef.value.scrollLeft = panStartScrollLeft - dx;
+                    workspaceRef.value.scrollTop = panStartScrollTop - dy;
+                } else if (mode.value === 'edit' && selection.active) {
+                    event.preventDefault();
+                    const point = pointerToCanvas(event);
+                    selection.currentX = point.x; selection.currentY = point.y;
+                    drawSelectionPreview();
+                }
+            }
+
+            function handlePointerUp(event) {
+                if (mode.value === 'pan' && isPanning.value) {
+                    isPanning.value = false;
+                    if (workspaceRef.value.hasPointerCapture(event.pointerId)) {
+                        workspaceRef.value.releasePointerCapture(event.pointerId);
+                    }
+                } else if (mode.value === 'edit' && selection.active) {
+                    event.preventDefault();
+                    const point = pointerToCanvas(event);
+                    selection.currentX = point.x; selection.currentY = point.y;
+                    const box = getSelectionBox();
+
+                    context.putImageData(activeSnapshot, 0, 0);
+                    selection.active = false;
+                    activeSnapshot = null;
+
+                    if (workspaceRef.value.hasPointerCapture(event.pointerId)) {
+                        workspaceRef.value.releasePointerCapture(event.pointerId);
+                    }
+
+                    if (box.width < 4 || box.height < 4) return;
+
+                    saveHistory();
+                    applyEffect(box);
+                }
+            }
+
+            function handlePointerCancel(event) {
+                if (mode.value === 'pan' && isPanning.value) {
+                    isPanning.value = false;
+                    if (workspaceRef.value.hasPointerCapture(event.pointerId)) {
+                        workspaceRef.value.releasePointerCapture(event.pointerId);
+                    }
+                } else if (mode.value === 'edit' && selection.active) {
+                    if (activeSnapshot && context) context.putImageData(activeSnapshot, 0, 0);
+                    if (workspaceRef.value.hasPointerCapture(event.pointerId)) {
+                        workspaceRef.value.releasePointerCapture(event.pointerId);
+                    }
+                    selection.active = false;
+                    activeSnapshot = null;
+                }
+            }
+
+            // File IO
+            function processFile(file) {
+                if (!file || !file.type.startsWith('image/')) {
+                    addToast("請選擇有效的圖片檔案", "error");
+                    return;
+                }
+                isProcessing.value = true;
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = canvasRef.value;
+                        context = canvas.getContext('2d');
+                        canvas.width = img.naturalWidth;
+                        canvas.height = img.naturalHeight;
+                        context.clearRect(0, 0, canvas.width, canvas.height);
+                        context.drawImage(img, 0, 0);
+
+                        imageSize.width = img.naturalWidth;
+                        imageSize.height = img.naturalHeight;
+                        
+                        preventAutoResize.value = false; // 載入新圖先重設防護
+                        updateWorkspaceSize();
+                        resetZoom();
+                        
+                        originalImageData = context.getImageData(0, 0, canvas.width, canvas.height);
+                        history.length = 0;
+                        hasImage.value = true;
+                        syncUndoState();
+                        isProcessing.value = false;
+                        addToast("圖片載入成功！");
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            function handleFileChange(event) {
+                processFile(event.target.files[0]);
+                event.target.value = ''; // 允許重新選擇同一張
+            }
+
+            function handleDrop(event) {
+                isDragging.value = false;
+                if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+                    processFile(event.dataTransfer.files[0]);
+                }
+            }
+
+            function undo() {
+                if (!history.length || !context) return;
+                context.putImageData(history.pop(), 0, 0);
+                syncUndoState();
+            }
+
+            function resetImage() {
+                if (!originalImageData || !context) return;
+                context.putImageData(originalImageData, 0, 0);
+                history.length = 0;
+                syncUndoState();
+                addToast("已還原至原始圖片", "info");
+            }
+
+            function clearImage() {
+                showClearConfirm.value = true;
+            }
+
+            function confirmClearImage() {
+                hasImage.value = false;
+                if (context && canvasRef.value) {
+                    context.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+                }
+                originalImageData = null;
+                history.length = 0;
+                syncUndoState();
+                const fileInput = document.querySelector('input[type="file"]');
+                if (fileInput) fileInput.value = '';
+                addToast("圖片已清除", "info");
+                showClearConfirm.value = false;
+            }
+
+            function downloadImage() {
+                const canvas = canvasRef.value;
+                if (!canvas || !hasImage.value) return;
+
+                isProcessing.value = true;
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        addToast("圖片輸出失敗", "error");
+                        isProcessing.value = false;
+                        return;
+                    }
+                    const link = document.createElement('a');
+                    const url = URL.createObjectURL(blob);
+                    const ext = outputFormat.value.split('/')[1] || 'png';
+                    
+                    link.href = url;
+                    link.download = `mosaic${Date.now()}.${ext}`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                    addToast("圖片下載成功！", "success");
+                    isProcessing.value = false;
+                }, outputFormat.value, outputQuality.value);
+            }
+
+            // Lifecycle
+            onMounted(() => {
+                initTheme();
+                updateWorkspaceSize();
+                window.addEventListener('resize', updateWorkspaceSize);
+            });
+
+            onBeforeUnmount(() => {
+                window.removeEventListener('resize', updateWorkspaceSize);
+            });
+
+            return {
+                workspaceRef, canvasRef, hasImage, canUndo, preventAutoResize,
+                effectType, shapeType, blockSize, blurSize, solidColor, 
+                outputFormat, outputQuality, zoomPercent, minZoom, maxZoom, 
+                effects, shapes, colorPresets, canvasDisplayStyle, 
+                toasts, isDark, showHelp, showClearConfirm, isProcessing, isDragging,
+                mode, isPanning,
+                toggleTheme, handleFileChange, handleDrop, 
+                handlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel,
+                adjustZoom, resetZoom, undo, resetImage, clearImage, confirmClearImage, downloadImage
+            };
+        }
+    }).mount('#app');
+</script>
+
+</body>
+</html>
